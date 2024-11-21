@@ -147,7 +147,7 @@ if __name__ == "__main__":
     parser.add_argument("--save-dir", default="./output.csv")
     parser.add_argument("--frames", default=4, type=int)
     parser.add_argument("--worker-num", default=6, type=int)
-    parser.add_argument("--url", default="10.4.174.156", type=str)
+    parser.add_argument("--url", type=str)
     args = parser.parse_args()
 
     prompt = makePrompt(categories)
