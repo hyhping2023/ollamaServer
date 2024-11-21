@@ -7,7 +7,7 @@ from tqdm import tqdm
 import argparse
 from PIL import Image
 from multiprocessing import Pool
-from ollama import png2base64, Dataloader, request
+from predict import png2base64, Dataloader, request
 
 class Client:
     def __init__(self, url, worker_num=6, model='llava:13b', size=(224,224)):
@@ -84,7 +84,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--csv-file", default="./trainval.csv")
     parser.add_argument("--root", default="../hw3_16fpv")
-    parser.add_argument("--save-dir", default="./output.csv")
     parser.add_argument("--frames", default=4, type=int)
     parser.add_argument("--worker-num", default=6, type=int)
     parser.add_argument("--url", type=str, required=True)

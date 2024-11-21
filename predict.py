@@ -117,7 +117,7 @@ def request(url, name:str, data_list:list, prompt, model, size=(224, 224),
     retries = 0
     while response.status_code != 200 and retries < max_retries:
         retries += 1
-        logging.warning("Retrying for {}th time. Retries left: {}. Name: {}. Status code: {}".format(retries, max_retries-retries, name, response.status_code), end='\r')
+        logging.warning("Retrying for {}th time. Retries left: {}. Name: {}. Status code: {}".format(retries, max_retries-retries, name, response.status_code))
         time.sleep(1)
         response = requests.post(url, data=json.dumps(data), headers=headers, stream=False)
 
