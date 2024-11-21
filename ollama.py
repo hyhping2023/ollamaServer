@@ -1,5 +1,6 @@
 import requests
 import json
+import logging
 import os, io, glob
 import pandas as pd
 import base64, time
@@ -11,20 +12,47 @@ from multiprocessing import Pool
 
 class Dataloader(Dataset):
     def __init__(self, csv_file='./test_for_student.csv', 
-                 frames = 1, root='hw3_16fpv', already = None):
+                 frames = 1, root='hw3_16fpv', already = None, offset = 0, sample = 10):
+        """
+        Parameters:
+        csv_file (str): csv file for dataloader
+        frames (int): number of frames to read from each video
+        root (str): root directory for videos
+        already (str): csv file for prelabels
+        offset (int): During the period of choosing pictures, the picked picture will be index+offset
+        sample (int): number of samples to draw from each group, only use for trainval!!!
+        
+        Returns: the return will be the ID and a list of images.
+        """
+        assert frames <= 16 and frames > 0
+        if offset >= 16//frames or offset < 0 or (offset >= 16%frames and offset != 0):
+            logging.warning("offset should be in range [0, 16//frames - 1] and they can not exceed 16%frames. The offset will be set to 0.")
+            self.offset = 0
+        else:
+            self.offset = offset
         self.df = pd.read_csv(csv_file, header=None, skiprows=1)[0].tolist()
-        if already is not None:
-            self.dfal = pd.read_csv(already, header=None, skiprows=1)
-            self.retry = self.dfal[0][self.dfal.where(self.dfal[1] == -1).dropna().index]
-            self.miss = set(self.df) - set(self.dfal[0].tolist())
-            self.df = self.retry.tolist() + list(self.miss)
+        if "trainval" in csv_file.lower():
+            self.df = pd.read_csv(csv_file, header=None, skiprows=1)
+            self.dataframe = self.df.groupby(1).apply(lambda x: x.sample(sample)).reset_index(drop=True)
+            self.df = self.dataframe[0].tolist()
+            self.label = dict(zip(self.dataframe[0], self.dataframe[1]))
+            self.mode = 1  # prelabeling mode
+        else:
+            self.mode = 0
+            if already is not None:
+                self.dfal = pd.read_csv(already, header=None, skiprows=1)
+                self.retry = self.dfal[0][self.dfal.where(self.dfal[1] == -1).dropna().index]
+                self.miss = set(self.df) - set(self.dfal[0].tolist())
+                self.df = self.retry.tolist() + list(self.miss)
         self.root = root
         self.frames = frames
 
     def __getitem__(self, index):
         path = os.path.join(self.root, self.df[index]+'.mp4')
         files = sorted(glob.glob(os.path.join(path, '*.jpg')))
-        return self.df[index], [files[i] for i in range(0, len(files), len(files)//self.frames)]
+        if self.mode == 1:
+            return self.df[index], [files[i+self.offset] for i in range(0, len(files), len(files)//self.frames)]
+        return self.df[index], [files[i+self.offset] for i in range(0, len(files), len(files)//self.frames)]
 
     def __len__(self):
         return len(self.df)
@@ -51,7 +79,25 @@ def getIndex(text:str):
 
 def request(url, name:str, data_list:list, prompt, model, size=(224, 224),
             max_tokens=100, max_retries=5, temperature=0.8, top_p=0.8, top_k=5):
-    # print(name)
+    """
+    Request a prediction from the server.
+
+    Parameters:
+    url (str): url of the server
+    name (str): name of the sample
+    data_list (list): list of paths to images
+    prompt (str): prompt for the model
+    model (str): model to use
+    size (tuple): size of the images
+    max_tokens (int): maximum number of tokens to generate
+    max_retries (int): maximum number of retries
+    temperature (float): temperature for sampling
+    top_p (float): top_p for sampling
+    top_k (int): top_k for sampling
+
+    Returns:
+    tuple: (name, output) where output is the prediction from the model
+    """
     encoded_data = [png2base64(data, size) for data in data_list]
     data = {
         "model": model,
@@ -67,12 +113,11 @@ def request(url, name:str, data_list:list, prompt, model, size=(224, 224),
         }
     headers = {'Content-Type': 'application/json'}
     response = requests.post(url, data=json.dumps(data), headers=headers, stream=False)
-    print(response.json())
 
     retries = 0
     while response.status_code != 200 and retries < max_retries:
         retries += 1
-        print("Retrying for {}th time. Retries left: {}. Name: {}. Status code: {}".format(retries, max_retries-retries, name, response.status_code), end='\r')
+        logging.warning("Retrying for {}th time. Retries left: {}. Name: {}. Status code: {}".format(retries, max_retries-retries, name, response.status_code), end='\r')
         time.sleep(1)
         response = requests.post(url, data=json.dumps(data), headers=headers, stream=False)
 
@@ -82,7 +127,7 @@ def request(url, name:str, data_list:list, prompt, model, size=(224, 224),
         finally:
             response.close()
     else:
-        print("\nerror")
+        logging.warning("failed to get response. Name: {}. Status code: {}".format(name, response.status_code), end='\r')
         return name, "-114514"
 
     return name, output
@@ -102,9 +147,8 @@ class Client:
         for name, data in tqdm(dataloader):
             while len(self.pool._cache) >= self.worker_num:
                 time.sleep(0.2)
-            # self.workers.append(self.pool.apply_async(request, (self.url, name, data, self.prompt, self.model, self.size)))
-            print(self.url)
-            request(self.url, name, data, self.prompt, self.model, self.size)
+            self.workers.append(self.pool.apply_async(request, (self.url, name, data, self.prompt, self.model, self.size)))
+            # request(self.url, name, data, self.prompt, self.model, self.size)
         self.pool.close()
         self.pool.join()
         results = {}
@@ -155,11 +199,12 @@ if __name__ == "__main__":
     parser.add_argument("--url", type=str, required=True)
     parser.add_argument("--model", choices=['llava:13b', 'llama3.2-vision'], default='llava:13b')
     parser.add_argument("--size", type=int, nargs=2, default=(224, 224))
+    parser.add_argument("--offset", default=0, type=int)
     args = parser.parse_args()
 
     prompt = makePrompt(categories)
 
-    dataloader = Dataloader(csv_file=args.csv_file, frames=args.frames, root=args.root)
+    dataloader = Dataloader(csv_file=args.csv_file, frames=args.frames, root=args.root, offset=args.offset)
     client = Client(url.format(args.url), categories, prompt, worker_num=args.worker_num, model=args.model, size=args.size)
     results = client.start(dataloader)
     client.save_result(results, args.save_dir, args.csv_file)
