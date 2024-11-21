@@ -49,12 +49,12 @@ def getIndex(text:str):
                 break
     return index
 
-def request(url, name:str, data_list:list, prompt, 
-            max_tokens=100, max_retries=5, temperature=0.8, top_p=0.8, top_k=5, size=(224, 224)):
+def request(url, name:str, data_list:list, prompt, model, size=(224, 224),
+            max_tokens=100, max_retries=5, temperature=0.8, top_p=0.8, top_k=5):
     # print(name)
     encoded_data = [png2base64(data, size) for data in data_list]
     data = {
-        "model": "llava:13b",
+        "model": model,
         "prompt": prompt,
         "stream":False,
         "images": encoded_data,
@@ -67,39 +67,44 @@ def request(url, name:str, data_list:list, prompt,
         }
     headers = {'Content-Type': 'application/json'}
     response = requests.post(url, data=json.dumps(data), headers=headers, stream=False)
+    print(response.json())
 
     retries = 0
-    while response.status_code != 200 and retries <= max_retries:
+    while response.status_code != 200 and retries < max_retries:
         retries += 1
-        print("Retrying for {}th time".format(retries))
+        print("Retrying for {}th time. Retries left: {}. Name: {}. Status code: {}".format(retries, max_retries-retries, name, response.status_code), end='\r')
+        time.sleep(1)
         response = requests.post(url, data=json.dumps(data), headers=headers, stream=False)
 
     if response.status_code == 200:
         try:
-            output =  response.json()['response']
+            output = response.json()['response']
         finally:
             response.close()
     else:
-        print("error")
+        print("\nerror")
         return name, "-114514"
 
     return name, output
 
 class Client:
-    def __init__(self, url, categories, prompt:str, worker_num=6):
+    def __init__(self, url, categories, prompt:str, worker_num=6, model='llava:13b', size=(224,224)):
         self.url = url
         self.categories = categories
         self.pool = Pool(worker_num)
         self.worker_num = worker_num
         self.workers = []
         self.prompt = prompt
+        self.model = model
+        self.size = size
 
     def start(self, dataloader: DataLoader):
         for name, data in tqdm(dataloader):
             while len(self.pool._cache) >= self.worker_num:
                 time.sleep(0.2)
-            self.workers.append(self.pool.apply_async(request, (self.url, name, data, self.prompt)))
-            # request(self.url, name, data, self.prompt)
+            # self.workers.append(self.pool.apply_async(request, (self.url, name, data, self.prompt, self.model, self.size)))
+            print(self.url)
+            request(self.url, name, data, self.prompt, self.model, self.size)
         self.pool.close()
         self.pool.join()
         results = {}
@@ -147,12 +152,14 @@ if __name__ == "__main__":
     parser.add_argument("--save-dir", default="./output.csv")
     parser.add_argument("--frames", default=4, type=int)
     parser.add_argument("--worker-num", default=6, type=int)
-    parser.add_argument("--url", type=str)
+    parser.add_argument("--url", type=str, required=True)
+    parser.add_argument("--model", choices=['llava:13b', 'llama3.2-vision'], default='llava:13b')
+    parser.add_argument("--size", type=int, nargs=2, default=(224, 224))
     args = parser.parse_args()
 
     prompt = makePrompt(categories)
 
     dataloader = Dataloader(csv_file=args.csv_file, frames=args.frames, root=args.root)
-    client = Client(url.format(args.url), categories, prompt, worker_num=args.worker_num)
+    client = Client(url.format(args.url), categories, prompt, worker_num=args.worker_num, model=args.model, size=args.size)
     results = client.start(dataloader)
     client.save_result(results, args.save_dir, args.csv_file)
