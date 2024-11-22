@@ -11,6 +11,7 @@ To help goog brother in HKUST(GZ) to use open source LVLM to solve AIAA2205 home
 
 **File Stricture**
 
+```
 .
 ├── README.md
 ├── descriptions.txt
@@ -20,6 +21,7 @@ To help goog brother in HKUST(GZ) to use open source LVLM to solve AIAA2205 home
 ├── results.txt
 ├── test_for_student.csv
 └── trainval.csv
+```
 
 **How to use it**
 
@@ -37,6 +39,6 @@ To help goog brother in HKUST(GZ) to use open source LVLM to solve AIAA2205 home
 6. llama3.2-vision 只支持1张图片，所以frames要设为1，不然会报错：status code 400 bad request。
 7. size 那里是连续两个整数，代表图片裁切后大小。
 8. offset是指在均匀抽取视频片段中每个连续帧组中帧的偏移量，代表选取组内不同的帧，offset的范围不能超过组的大小且要考虑末尾情况，否则会被设置为0。
-9. sample代表在分析类别时从每个类别中抽取的样本数量。
+9. sample代表在分析类别时从每个类别中抽取的样本数量
 10. fix选项代表可以后期针对缺失的和错误的进行修复，这是可选项。
 11. 懒鬼就直接`python ollama.py --url <url>`就得了，有需要在逐步加入参数。
