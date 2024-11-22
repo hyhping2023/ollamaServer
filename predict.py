@@ -12,7 +12,7 @@ from multiprocessing import Pool
 
 class Dataloader(Dataset):
     def __init__(self, csv_file='./test_for_student.csv', 
-                 frames = 1, root='hw3_16fpv', already = None, offset = 0, sample = 10):
+                 frames = 1, root='hw3_16fpv', existed = None, offset = 0, sample = 10):
         """
         Parameters:
         csv_file (str): csv file for dataloader
@@ -39,11 +39,13 @@ class Dataloader(Dataset):
             self.mode = 1  # prelabeling mode
         else:
             self.mode = 0
-            if already is not None:
-                self.dfal = pd.read_csv(already, header=None, skiprows=1)
-                self.retry = self.dfal[0][self.dfal.where(self.dfal[1] == -1).dropna().index]
-                self.miss = set(self.df) - set(self.dfal[0].tolist())
-                self.df = self.retry.tolist() + list(self.miss)
+            if existed is not None:
+                dfe = pd.read_csv(existed, header=None, skiprows=1)
+                retry = dfe[0][dfe.where(self.dfe[1] == -1).dropna().index]
+                miss = set(self.df) - set(dfe[0].tolist())
+                self.df = retry.tolist() + list(miss)
+        self.csv_file = csv_file
+        self.offset = offset
         self.root = root
         self.frames = frames
 
@@ -56,6 +58,9 @@ class Dataloader(Dataset):
 
     def __len__(self):
         return len(self.df)
+    
+    def __call__(self, ):
+        return self.csv_file, self.root, self.frames, self.offset
 
 def png2base64(img_path, size=(224,224)):
     with Image.open(img_path) as img:
@@ -68,13 +73,8 @@ def png2base64(img_path, size=(224,224)):
     
 def getIndex(text:str):
     index = -1
-    if text.find("[[[") != -1:
-        index = int(text[text.find("[[[")+3])
-    else:
-        for i in text:
-            if i.isdigit():
-                index = int(i)
-                break
+    if text.find("[[[") != -1 and text.find("]]]") != -1:
+        index = int(text[text.find("[[["):text.find("]]]")])
     return index
 
 def request(url, name:str, data_list:list, prompt, model, size=(224, 224),
@@ -128,7 +128,7 @@ def request(url, name:str, data_list:list, prompt, model, size=(224, 224),
             response.close()
     else:
         logging.warning("failed to get response. Name: {}. Status code: {}".format(name, response.status_code), end='\r')
-        return name, "-114514"
+        return name, ""
 
     return name, output
 
@@ -142,6 +142,9 @@ class Client:
         self.prompt = prompt
         self.model = model
         self.size = size
+    
+    def __call__(self, ):
+        return self.url, self.categories, self.prompt, self.model, self.size
 
     def start(self, dataloader: DataLoader):
         for name, data in tqdm(dataloader):
@@ -174,6 +177,53 @@ def makePrompt(categories:dict):
 
     return prompt
 
+def fixMissed(output:str, oldDataloader: DataLoader, oldClient: Client, max_retries = 10):
+    csv_file, root, frames, offset = oldDataloader()
+    url, categories, prompt, model, size = oldClient()
+
+    tempFile = "temp.csv"
+    finalOutput = output.replace(".csv", "_final.csv")
+
+    if not os.path.exists(tempFile):
+        os.system(f"cp {output} {tempFile}")
+    else:
+        os.system(f"rm {tempFile}")
+        os.system(f"cp {output} {tempFile}")
+
+    temp = Dataloader(csv_file=csv_file, frames = frames, root = root, offset = offset, existed = tempFile)
+    tries = 1
+    while temp.df !=0 and tries <= max_retries: 
+        logging.info("Retrying for {}th time. Retries left: {}".format(tries, max_retries-tries))
+        if max_retries - tries > 4: # more than 4 retries left
+            temp = Dataloader(csv_file=csv_file, frames = frames, root = root, offset = offset, existed = output)
+            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=args.worker_num, model=args.model, size=args.size)
+            results = client.start(temp)
+            client.save_result(results, save_dir=tempFile, csv_file=csv_file)
+        elif max_retries - tries > 1: # 2-4 retries left
+            temp = Dataloader(csv_file=csv_file, frames = 16, root = root, offset = 0, existed = tempFile)
+            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=args.worker_num, model=args.model, size=args.size)
+            results = client.start(temp)
+            client.save_result(results, save_dir=tempFile, csv_file=csv_file)
+        else: # less than 2 retries left
+            temp = Dataloader(csv_file=csv_file, frames = 16, root = root, offset = 0, existed = tempFile)
+            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=args.worker_num, model="llava:13b", size=args.size)
+            results = client.start(temp)
+            client.save_result(results, save_dir=tempFile, csv_file=csv_file)
+
+            temp = Dataloader(csv_file=csv_file, frames = 16, root = root, offset = 0, existed = tempFile)
+            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=args.worker_num, model="llama3.2-vision", size=args.size)
+            results = client.start(temp)
+            client.save_result(results, save_dir=tempFile, csv_file=csv_file)
+            
+        tries += 1
+    final = Dataloader(csv_file=csv_file, frames = 16, root = root, offset = 0, existed = tempFile)
+    if len(final.df) > 0:
+        logging.info("Retrying for {} times. We can not fix all the errors".format(max_retries))
+    else:
+        logging.info("Retrying for {} times. We can fix all the errors".format(tries))
+    os.system(f"cp {tempFile} {finalOutput}")
+
+
 categories  = {
     "0":"play basketball",
     "1":"mowing the lawn",
@@ -200,6 +250,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", choices=['llava:13b', 'llama3.2-vision'], default='llava:13b')
     parser.add_argument("--size", type=int, nargs=2, default=(224, 224))
     parser.add_argument("--offset", default=0, type=int)
+    parser.add_argument("--fix", action="store_true")
     args = parser.parse_args()
 
     prompt = makePrompt(categories)
@@ -208,3 +259,6 @@ if __name__ == "__main__":
     client = Client(url.format(args.url), categories, prompt, worker_num=args.worker_num, model=args.model, size=args.size)
     results = client.start(dataloader)
     client.save_result(results, args.save_dir, args.csv_file)
+
+    if args.fix:
+        fixMissed(args.save_dir, dataloader, client)
