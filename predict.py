@@ -1,7 +1,7 @@
 import requests
 import json
 import logging
-import os, io, glob
+import os, io, glob, shutil
 import pandas as pd
 import base64, time
 from tqdm import tqdm
@@ -30,7 +30,7 @@ class Dataloader(Dataset):
             self.offset = 0
         else:
             self.offset = offset
-        self.df = pd.read_csv(csv_file, header=None, skiprows=1)[0].tolist()[:10]
+        self.df = pd.read_csv(csv_file, header=None, skiprows=1)[0].tolist()
         if "trainval" in csv_file.lower():
             self.df = pd.read_csv(csv_file, header=None, skiprows=1)
             self.dataframe = self.df.groupby(1).apply(lambda x: x.sample(sample)).reset_index(drop=True)
@@ -149,12 +149,14 @@ class Client:
     def __call__(self, ):
         return self.url, self.categories, self.prompt, self.model, self.size, self.worker_num
 
-    def start(self, dataloader: DataLoader):
+    def start(self, dataloader: DataLoader, debug:bool = False):
         for name, data in tqdm(dataloader):
             while len(self.pool._cache) >= self.worker_num:
                 time.sleep(0.2)
-            self.workers.append(self.pool.apply_async(request, (self.url, name, data, self.prompt, self.model, self.size)))
-            # request(self.url, name, data, self.prompt, self.model, self.size)
+            if debug:
+                request(self.url, name, data, self.prompt, self.model, self.size)
+            else:
+                self.workers.append(self.pool.apply_async(request, (self.url, name, data, self.prompt, self.model, self.size)))
         self.pool.close()
         self.pool.join()
         results = {}
@@ -209,8 +211,8 @@ def fixMissed(output:str, oldDataloader: DataLoader, oldClient: Client, max_retr
     finalOutput = output.replace(".csv", "_final.csv")  # used to store the final results
 
     if os.path.exists(finalOutput):
-        os.system(f"rm {finalOutput}")
-    os.system(f"cp {output} {finalOutput}")
+        os.remove(finalOutput)
+    shutil.copyfile(output, finalOutput)
 
     temp = Dataloader(csv_file=csv_file, frames = frames, root = root, offset = offset, existed = finalOutput)
     tries = 1
@@ -245,6 +247,13 @@ def fixMissed(output:str, oldDataloader: DataLoader, oldClient: Client, max_retr
     else:
         print("Retrying for {} times. We can fix all the errors".format(tries))
 
+def InternetCheck(url):
+    try:
+        response = requests.get(url, timeout=1)
+        logging.info("Internet is Ok. The status code is {}".format(response.status_code))
+    except:
+        logging.error("Internet is not available!!!")
+
 
 categories  = {
     "0":"play basketball",
@@ -274,14 +283,16 @@ if __name__ == "__main__":
     parser.add_argument("--offset", default=0, type=int)
     parser.add_argument("--fix", action="store_true")
     parser.add_argument("--only-fix", action="store_true")
+    parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
     prompt = makePrompt(categories)
 
     dataloader = Dataloader(csv_file=args.csv_file, frames=args.frames, root=args.root, offset=args.offset)
+    InternetCheck(url.format(args.url))
     client = Client(url.format(args.url), categories, prompt, worker_num=args.worker_num, model=args.model, size=args.size)
     if not args.only_fix:
-        results = client.start(dataloader)
+        results = client.start(dataloader, args.debug)
         client.save_result(results, args.save_dir, args.csv_file)
 
     if args.fix or args.only_fix:
