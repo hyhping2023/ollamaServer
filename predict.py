@@ -292,7 +292,7 @@ def logOutput(response, logIndex):
     timeinfo = "[{} {}]".format('/'.join([str(t.tm_year), str(t.tm_mon), str(t.tm_mday)]) , ':'.join([str(t.tm_hour), str(t.tm_min), str(t.tm_sec)])) 
     if not os.path.exists("log"):
         os.mkdir("log")
-    with open("log/log_{}.txt".format(logIndex), "a") as f:
+    with open("log/log_{}.log".format(logIndex), "a") as f:
         f.write(timeinfo + response)
 
 
@@ -328,7 +328,7 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     logIndex = 0
-    while os.path.exists('log/log_{}.txt'.format(logIndex)):
+    while os.path.exists('log/log_{}.log'.format(logIndex)):
         logIndex += 1
     prompt = makePrompt(categories)
 
