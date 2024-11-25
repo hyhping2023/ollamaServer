@@ -12,7 +12,7 @@ from multiprocessing import Pool
 
 class Dataloader(Dataset):
     def __init__(self, csv_file='./test_for_student.csv', 
-                 frames = 1, root='hw3_16fpv', existed = None, offset = 0, sample = 10):
+                 frames = 1, root='hw3_16fpv', existed = None, offset = 0, sample = 10, Range = [0, -1]):
         """
         Parameters:
         csv_file (str): csv file for dataloader
@@ -30,7 +30,7 @@ class Dataloader(Dataset):
             self.offset = 0
         else:
             self.offset = offset
-        self.df = pd.read_csv(csv_file, header=None, skiprows=1)[0].tolist()[:100]
+        self.df = pd.read_csv(csv_file, header=None, skiprows=1)[0].tolist()[Range[0]:Range[1]]
         if "trainval" in csv_file.lower():
             self.df = pd.read_csv(csv_file, header=None, skiprows=1)
             self.dataframe = self.df.groupby(1).apply(lambda x: x.sample(sample)).reset_index(drop=True)
@@ -318,6 +318,7 @@ if __name__ == "__main__":
     parser.add_argument("--url", type=str, required=True)
     parser.add_argument("--model", choices=['llava:13b', 'llama3.2-vision'], default='llava:13b')
     parser.add_argument("--size", type=int, nargs=2, default=(224, 224))
+    parser.add_argument("--range", default=[0, -1], type=int, nargs=2)
     parser.add_argument("--offset", default=0, type=int)
     parser.add_argument("--fix", action="store_true")
     parser.add_argument("--only-fix", action="store_true")
@@ -328,7 +329,7 @@ if __name__ == "__main__":
         logIndex += 1
     prompt = makePrompt(categories)
 
-    dataloader = Dataloader(csv_file=args.csv_file, frames=args.frames, root=args.root, offset=args.offset)
+    dataloader = Dataloader(csv_file=args.csv_file, frames=args.frames, root=args.root, offset=args.offset, Range=args.range)
     InternetCheck(url.format(args.url))
     client = Client(url.format(args.url), categories, prompt, worker_num=args.worker_num, model=args.model, size=args.size, logIndex=logIndex)
     if not args.only_fix:
