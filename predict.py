@@ -257,18 +257,18 @@ def fixMissed(output:str, oldDataloader: DataLoader, oldClient: Client, max_retr
             client.save_result(results, save_dir=tempFile)
         elif max_retries - tries > 1: # 2-4 retries left
             temp = Dataloader(csv_file=csv_file, frames = 16, root = root, offset = 0, existed = finalOutput)
-            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model=model, size=size)
+            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model=model, size=(320, 320))
             results = client.start(temp)
             client.save_result(results, save_dir=tempFile)
         else: # less than 2 retries left
             temp = Dataloader(csv_file=csv_file, frames = 16, root = root, offset = 0, existed = finalOutput)
-            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model="llava:13b", size=size)
+            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model="llava:13b", size=(448, 448))
             results = client.start(temp)
             client.save_result(results, save_dir=tempFile)
             intergrate(tempFile, finalOutput)
 
             temp = Dataloader(csv_file=csv_file, frames = 1, root = root, offset = 0, existed = finalOutput)
-            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model="llama3.2-vision", size=size)
+            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model="llama3.2-vision", size=(448, 448))
             results = client.start(temp)
             client.save_result(results, save_dir=tempFile)
         intergrate(tempFile, finalOutput)
