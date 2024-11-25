@@ -129,8 +129,10 @@ def request(url, name:str, data_list:list, prompt, model, size=(224, 224),
             output = response.json()['response']
         finally:
             response.close()
+            logOutput("Name: {}\tStatus code: {}\tOutput: {}\n".format(name, response.status_code, output))
     else:
         logging.warning("failed to get response. Name: {}. Status code: {}".format(name, response.status_code))
+        logOutput("Name: {}\tStatus code: {}\tOutput: {}\n".format(name, response.status_code, output))
         return name, ""
 
     return name, output
@@ -257,6 +259,12 @@ def InternetCheck(url, quiet=False):
             logging.warning("There is a problem with the internet. The status code is {}".format(response.status_code))
     except:
         logging.error("Internet is not available!!!")
+
+def logOutput(response):
+    if not os.path.exists("log"):
+        os.mkdir("log")
+    with open("log/log.txt", "a") as f:
+        f.write(response)
 
 
 categories  = {
