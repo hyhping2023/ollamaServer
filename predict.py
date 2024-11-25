@@ -321,7 +321,7 @@ if __name__ == "__main__":
     parser.add_argument("--url", type=str, required=True)
     parser.add_argument("--model", choices=['llava:13b', 'llama3.2-vision'], default='llava:13b')
     parser.add_argument("--size", type=int, nargs=2, default=(224, 224))
-    parser.add_argument("--range", default=[0, -1], type=int, nargs=2)
+    parser.add_argument("--range", default=[0, 2280], type=int, nargs=2)
     parser.add_argument("--offset", default=0, type=int)
     parser.add_argument("--fix", action="store_true")
     parser.add_argument("--only-fix", action="store_true")
