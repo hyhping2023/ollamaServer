@@ -61,7 +61,7 @@ class Dataloader(Dataset):
         return len(self.df)
     
     def __call__(self, ):
-        return self.csv_file, self.root, self.frames, self.offset
+        return self.csv_file, self.root, self.frames, self.offset, self.Range
 
 def png2base64(img_path, size=(224,224)):
     with Image.open(img_path) as img:
@@ -177,7 +177,7 @@ class Client:
         self.logIndex = logIndex
     
     def __call__(self, ):
-        return self.url, self.categories, self.prompt, self.model, self.size, self.worker_num
+        return self.url, self.categories, self.prompt, self.model, self.size, self.worker_num, self.logIndex
 
     def start(self, dataloader: DataLoader, debug:bool = False):
         for name, data in tqdm(dataloader):
@@ -236,8 +236,8 @@ def intergrate(tempFile, outputFile):
 
 
 def fixMissed(output:str, oldDataloader: DataLoader, oldClient: Client, max_retries = 5):
-    csv_file, root, frames, offset = oldDataloader()
-    url, categories, prompt, model, size, worker_num = oldClient()
+    csv_file, root, frames, offset, Range = oldDataloader()
+    url, categories, prompt, model, size, worker_num, logIndex = oldClient()
 
     tempFile = "temp.csv"  # used to store new generated results
     finalOutput = output.replace(".csv", "_final.csv")  # used to store the final results
@@ -246,34 +246,34 @@ def fixMissed(output:str, oldDataloader: DataLoader, oldClient: Client, max_retr
         os.remove(finalOutput)
     shutil.copyfile(output, finalOutput)
 
-    temp = Dataloader(csv_file=csv_file, frames = frames, root = root, offset = offset, existed = finalOutput)
+    temp = Dataloader(csv_file=csv_file, frames = frames, root = root, offset = offset, existed = finalOutput, Range=Range)
     tries = 1
     while temp.df !=0 and tries <= max_retries: 
         logging.info("Retrying for {}th time. Retries left: {}".format(tries, max_retries-tries))
         if max_retries - tries > 4: # more than 4 retries left
-            temp = Dataloader(csv_file=csv_file, frames = frames, root = root, offset = offset, existed = finalOutput)
-            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model=model, size=size)
+            temp = Dataloader(csv_file=csv_file, frames = frames, root = root, offset = offset, existed = finalOutput, Range=Range)
+            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model=model, size=size, logIndex=logIndex)
             results = client.start(temp)
             client.save_result(results, save_dir=tempFile)
         elif max_retries - tries > 1: # 2-4 retries left
-            temp = Dataloader(csv_file=csv_file, frames = 16, root = root, offset = 0, existed = finalOutput)
-            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model=model, size=(320, 320))
+            temp = Dataloader(csv_file=csv_file, frames = 16, root = root, offset = 0, existed = finalOutput, Range=Range)
+            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model=model, size=(320, 320), logIndex=logIndex)
             results = client.start(temp)
             client.save_result(results, save_dir=tempFile)
         else: # less than 2 retries left
-            temp = Dataloader(csv_file=csv_file, frames = 16, root = root, offset = 0, existed = finalOutput)
-            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model="llava:13b", size=(448, 448))
+            temp = Dataloader(csv_file=csv_file, frames = 16, root = root, offset = 0, existed = finalOutput, Range=Range)
+            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model="llava:13b", size=(448, 448), logIndex=logIndex)
             results = client.start(temp)
             client.save_result(results, save_dir=tempFile)
             intergrate(tempFile, finalOutput)
 
-            temp = Dataloader(csv_file=csv_file, frames = 1, root = root, offset = 0, existed = finalOutput)
-            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model="llama3.2-vision", size=(448, 448))
+            temp = Dataloader(csv_file=csv_file, frames = 1, root = root, offset = 0, existed = finalOutput, Range=Range)
+            client = Client(url=url, categories=categories, prompt=makePrompt(categories), worker_num=worker_num, model="llama3.2-vision", size=(448, 448), logIndex=logIndex)
             results = client.start(temp)
             client.save_result(results, save_dir=tempFile)
         intergrate(tempFile, finalOutput)
         tries += 1
-    final = Dataloader(csv_file=csv_file, frames = 16, root = root, offset = 0, existed = finalOutput)
+    final = Dataloader(csv_file=csv_file, frames = 16, root = root, offset = 0, existed = finalOutput, Range=Range)
     if len(final.df) > 0:
         print("Retrying for {} times. We can not fix all the errors".format(max_retries))
     else:
