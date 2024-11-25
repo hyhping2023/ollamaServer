@@ -288,12 +288,24 @@ def InternetCheck(url, quiet=False):
         logging.error("Internet is not available!!!")
 
 def logOutput(response, logIndex):
-    t = time.localtime()
-    timeinfo = "[{} {}]".format('/'.join([str(t.tm_year), str(t.tm_mon), str(t.tm_mday)]) , ':'.join([str(t.tm_hour), str(t.tm_min), str(t.tm_sec)])) 
+    def TIME()->str:
+        t = time.localtime()
+        year = str(t.tm_year)
+        month = str(t.tm_mon)
+        day = str(t.tm_mday)
+        hour = str(t.tm_hour)
+        minute = str(t.tm_min)
+        second = str(t.tm_sec)
+        month = "0" + month if len(month) == 1 else month
+        day = "0" + day if len(day) == 1 else day
+        hour = "0" + hour if len(hour) == 1 else hour
+        minute = "0" + minute if len(minute) == 1 else minute
+        second = "0" + second if len(second) == 1 else second
+        return "[{} {}] ".format('/'.join([year, month, day]), ':'.join([hour, minute, second]))
     if not os.path.exists("log"):
         os.mkdir("log")
     with open("log/log_{}.log".format(logIndex), "a") as f:
-        f.write(timeinfo + response)
+        f.write(TIME() + response)
 
 
 categories  = {
