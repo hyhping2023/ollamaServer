@@ -86,7 +86,10 @@ def getIndex(text:str):
         "snow":9,
     }
     if text.find("[[[") != -1 and text.find("]]]") != -1:
-        index = int(text[text.find("[[[")+3:text.find("]]]")])
+        try :
+            index = int(text[text.find("[[[")+3:text.find("]]]")])
+        except:
+            index = -1
     else:
         for i in text:
             if i.isdigit():
@@ -211,7 +214,7 @@ def makePrompt(categories:dict):
     Please classify the picture scene according to the picture. 
     You should carefuuly analyze what prople in the scene are really doing something and understand what they truly want to do.\n
     '''+"\n".join([f"If the scene is about {v}, the category index is {k}" for k,v in categories.items()])+\
-    "\n\n\nOnly the catefory index is needed. \nYou should return in the form of [[[index]]].\n"
+    "\n\n\nOnly the catefory index is needed. \nYou should return in the form of [[[index]]].\nIf yyou are not sure, please just don;t tell me any index.\n"
 
     return prompt
 
