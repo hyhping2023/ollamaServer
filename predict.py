@@ -184,7 +184,7 @@ class Client:
             while len(self.pool._cache) >= self.worker_num:
                 time.sleep(0.2)
             if debug:
-                request(self.url, name, data, self.prompt, self.model, self.size, logindex=self.logIndex)
+                request(self.url, name, data, self.prompt, self.model, self.size, logIndex=self.logIndex)
             else:
                 self.workers.append(self.pool.apply_async(request, (self.url, name, data, self.prompt, self.model, self.size, self.logIndex)))
         self.pool.close()
