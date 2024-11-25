@@ -12,7 +12,7 @@ from multiprocessing import Pool
 
 class Dataloader(Dataset):
     def __init__(self, csv_file='./test_for_student.csv', 
-                 frames = 1, root='hw3_16fpv', existed = None, offset = 0, sample = 10, Range = [0, -1]):
+                 frames = 1, root='hw3_16fpv', existed = None, offset = 0, sample = 10, Range = [0, 2280]):
         """
         Parameters:
         csv_file (str): csv file for dataloader
@@ -25,6 +25,7 @@ class Dataloader(Dataset):
         Returns: the return will be the ID and a list of images.
         """
         assert frames <= 16 and frames > 0
+        self.Range = Range
         if offset >= 16//frames or offset < 0 or (offset >= 16%frames and 16%frames != 0):
             logging.warning("offset should be in range [0, 16//frames - 1] and they can not exceed 16%frames. The offset will be set to 0.")
             self.offset = 0
@@ -190,6 +191,7 @@ class Client:
         self.pool.close()
         self.pool.join()
         results = {}
+        self.Range = dataloader.Range
         for worker in self.workers:
             name, response = worker.get()
             result = getIndex(response)
@@ -198,7 +200,7 @@ class Client:
 
     def save_result(self, results, save_dir='output.csv', csv_file=None):
         if csv_file is not None:  # For normal prediction
-            temp = Dataloader(csv_file=csv_file, frames = 6, root='hw3_16fpv')
+            temp = Dataloader(csv_file=csv_file, frames = 1, root='hw3_16fpv', Range=self.Range)
             with open(save_dir, "w") as f:
                 f.writelines("Id,Category\n")
                 for name in temp.df:
