@@ -25,12 +25,12 @@ class Dataloader(Dataset):
         Returns: the return will be the ID and a list of images.
         """
         assert frames <= 16 and frames > 0
-        if offset >= 16//frames or offset < 0 or (offset >= 16%frames and offset != 0):
+        if offset >= 16//frames or offset < 0 or (offset >= 16%frames and 16%frames != 0):
             logging.warning("offset should be in range [0, 16//frames - 1] and they can not exceed 16%frames. The offset will be set to 0.")
             self.offset = 0
         else:
             self.offset = offset
-        self.df = pd.read_csv(csv_file, header=None, skiprows=1)[0].tolist()
+        self.df = pd.read_csv(csv_file, header=None, skiprows=1)[0].tolist()[:100]
         if "trainval" in csv_file.lower():
             self.df = pd.read_csv(csv_file, header=None, skiprows=1)
             self.dataframe = self.df.groupby(1).apply(lambda x: x.sample(sample)).reset_index(drop=True)
@@ -73,15 +73,36 @@ def png2base64(img_path, size=(224,224)):
     
 def getIndex(text:str):
     index = -1
-    try :
-        if text.find("[[[") != -1 and text.find("]]]") != -1:
-            index = int(text[text.find("[[[")+3:text.find("]]]")])
-    except:
-        pass
+    keyWordDict = {
+        "basketball": 0,
+        "mowing":1,"lawn":1,
+        "guitar":2,
+        "piano":3,
+        "drum":4,
+        "pen":5,
+        'birthday':6,
+        "sing":7,
+        "scratch":8, "itch":8,
+        "snow":9,
+    }
+    if text.find("[[[") != -1 and text.find("]]]") != -1:
+        index = int(text[text.find("[[[")+3:text.find("]]]")])
+    else:
+        for i in text:
+            if i.isdigit():
+                index = int(i)
+                break
+        if index == -1:
+            for category in keyWordDict.keys():
+                if category in text.lower():
+                    if index != -1:
+                        index = -1
+                        break
+                    index = keyWordDict[category] 
     return index
 
-def request(url, name:str, data_list:list, prompt, model, size=(224, 224),
-            max_tokens=100, max_retries=5, temperature=0.8, top_p=0.8, top_k=5):
+def request(url, name:str, data_list:list, prompt, model, size=(224, 224), logIndex=0,
+            max_tokens=300, max_retries=5, temperature=0.1, top_p=0.8, top_k=5):
     """
     Request a prediction from the server.
 
@@ -129,16 +150,18 @@ def request(url, name:str, data_list:list, prompt, model, size=(224, 224),
             output = response.json()['response']
         finally:
             response.close()
-            logOutput("Name: {}\tStatus code: {}\tOutput: {}\n".format(name, response.status_code, output))
+            if name == 'None':
+                return response
+            logOutput("Name: {}\tStatus code: {}\tOutput: {}\n".format(name, response.status_code, output), logIndex)
     else:
         logging.warning("failed to get response. Name: {}. Status code: {}".format(name, response.status_code))
-        logOutput("Name: {}\tStatus code: {}\tOutput: {}\n".format(name, response.status_code, output))
+        logOutput("Name: {}\tStatus code: {}\tOutput: {}\n".format(name, response.status_code, output), logIndex)
         return name, ""
 
     return name, output
 
 class Client:
-    def __init__(self, url, categories, prompt:str, worker_num=6, model='llava:13b', size=(224,224)):
+    def __init__(self, url, categories, prompt:str, worker_num=6, model='llava:13b', size=(224,224), logIndex=0):
         self.url = url
         self.categories = categories
         self.pool = Pool(worker_num)
@@ -147,6 +170,7 @@ class Client:
         self.prompt = prompt
         self.model = model
         self.size = size
+        self.logIndex = logIndex
     
     def __call__(self, ):
         return self.url, self.categories, self.prompt, self.model, self.size, self.worker_num
@@ -157,9 +181,9 @@ class Client:
             while len(self.pool._cache) >= self.worker_num:
                 time.sleep(0.2)
             if debug:
-                request(self.url, name, data, self.prompt, self.model, self.size)
+                request(self.url, name, data, self.prompt, self.model, self.size, logindex=self.logIndex)
             else:
-                self.workers.append(self.pool.apply_async(request, (self.url, name, data, self.prompt, self.model, self.size)))
+                self.workers.append(self.pool.apply_async(request, (self.url, name, data, self.prompt, self.model, self.size, self.logIndex)))
         self.pool.close()
         self.pool.join()
         results = {}
@@ -187,7 +211,7 @@ def makePrompt(categories:dict):
     Please classify the picture scene according to the picture. 
     You should carefuuly analyze what prople in the scene are really doing something and understand what they truly want to do.\n
     '''+"\n".join([f"If the scene is about {v}, the category index is {k}" for k,v in categories.items()])+\
-    "\nOnly the catefory index is needed. You should return in the form of [[[index]]]."
+    "\n\n\nOnly the catefory index is needed. \nYou should return in the form of [[[index]]].\n"
 
     return prompt
 
@@ -252,7 +276,7 @@ def fixMissed(output:str, oldDataloader: DataLoader, oldClient: Client, max_retr
 
 def InternetCheck(url, quiet=False):
     try:
-        response = requests.get(url, timeout=1)
+        response = request(url, 'None', [], 'None', 'llava:13b', max_tokens=1)
         if not quiet and response.status_code == 200:
             logging.info("Internet is Ok. The status code is {}".format(response.status_code))
         if response.status_code != 200:
@@ -260,11 +284,13 @@ def InternetCheck(url, quiet=False):
     except:
         logging.error("Internet is not available!!!")
 
-def logOutput(response):
+def logOutput(response, logIndex):
+    t = time.localtime()
+    timeinfo = "[{} {}]".format('/'.join([str(t.tm_year), str(t.tm_mon), str(t.tm_mday)]) , ':'.join([str(t.tm_hour), str(t.tm_min), str(t.tm_sec)])) 
     if not os.path.exists("log"):
         os.mkdir("log")
-    with open("log/log.txt", "a") as f:
-        f.write(response)
+    with open("log/log_{}.txt".format(logIndex), "a") as f:
+        f.write(timeinfo + response)
 
 
 categories  = {
@@ -274,7 +300,7 @@ categories  = {
     "3":"play the piano",
     "4":"play the drum",
     "5":"pen beat",
-    '6':'brithday',
+    '6':'birthday',
     "7":"singing",
     "8":"scratch an itch",
     "9":"remove the snow",
@@ -297,12 +323,14 @@ if __name__ == "__main__":
     parser.add_argument("--only-fix", action="store_true")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
-
+    logIndex = 0
+    while os.path.exists('log/log_{}.txt'.format(logIndex)):
+        logIndex += 1
     prompt = makePrompt(categories)
 
     dataloader = Dataloader(csv_file=args.csv_file, frames=args.frames, root=args.root, offset=args.offset)
     InternetCheck(url.format(args.url))
-    client = Client(url.format(args.url), categories, prompt, worker_num=args.worker_num, model=args.model, size=args.size)
+    client = Client(url.format(args.url), categories, prompt, worker_num=args.worker_num, model=args.model, size=args.size, logIndex=logIndex)
     if not args.only_fix:
         results = client.start(dataloader, args.debug)
         client.save_result(results, args.save_dir, args.csv_file)
