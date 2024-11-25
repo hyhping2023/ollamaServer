@@ -7,7 +7,7 @@ from tqdm import tqdm
 import argparse
 from PIL import Image
 from multiprocessing import Pool
-from predict import png2base64, Dataloader, request
+from predict import png2base64, Dataloader, request, InternetCheck
 
 class Client:
     def __init__(self, url, worker_num=6, model='llava:13b', size=(224,224)):
@@ -23,6 +23,7 @@ class Client:
 
     def start(self, dataloader: Dataloader):
         for name, data in tqdm(dataloader):
+            InternetCheck(self.url, quiet=True)
             while len(self.pool._cache) >= self.worker_num:  # waiting for the processes in the pool and blocking the new ones
                 time.sleep(0.2)
             self.workers.append(self.pool.apply_async(request, (self.url, name, data, self.makePrompt(), self.model, self.size)))

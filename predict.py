@@ -151,6 +151,7 @@ class Client:
 
     def start(self, dataloader: DataLoader, debug:bool = False):
         for name, data in tqdm(dataloader):
+            InternetCheck(self.url, quiet=True)
             while len(self.pool._cache) >= self.worker_num:
                 time.sleep(0.2)
             if debug:
@@ -247,10 +248,13 @@ def fixMissed(output:str, oldDataloader: DataLoader, oldClient: Client, max_retr
     else:
         print("Retrying for {} times. We can fix all the errors".format(tries))
 
-def InternetCheck(url):
+def InternetCheck(url, quiet=False):
     try:
         response = requests.get(url, timeout=1)
-        logging.info("Internet is Ok. The status code is {}".format(response.status_code))
+        if not quiet and response.status_code == 200:
+            logging.info("Internet is Ok. The status code is {}".format(response.status_code))
+        if response.status_code != 200:
+            logging.warning("There is a problem with the internet. The status code is {}".format(response.status_code))
     except:
         logging.error("Internet is not available!!!")
 
